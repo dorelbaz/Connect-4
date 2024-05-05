@@ -32,10 +32,9 @@ public class Connect4Controller
     
     private boolean player1_Turn;
     private final boolean ON = false, OFF = true;
-    private final int radius = 15, rows = 5, columns = 7;
-    private final int PLAYER_1_CHOICE = 1, PLAYER_2_CHOICE = 2, NO_RESULT = 0, PLAYER1_WINS = 1, PLAYER2_WINS = 2,
-                      DEFAULT_VALUE = 10, PLAYER1_WINNING_SUM = 4, PLAYER2_WINNING_SUM = 8;
-    private final int CONSECUTIVE_CELLS_3 = 3, LEFT = -1, RIGHT = 1, UP = 1, DOWN = -1, DIRECTIONS = 8;
+    private final int RADIUS = 15, ROWS = 5, COLUMNS = 7;
+    private final int PLAYER_1_CHOICE = 1, PLAYER_2_CHOICE = 2, NO_RESULT = 0, PLAYER1_WINS = 1, PLAYER2_WINS = 2, DEFAULT_VALUE = 0;
+    private final int CONSECUTIVE_CELLS_3 = 3, MAX_CELLS_IN_ROW = 7, MAX_CELLS_IN_COLUMN = 5, MAX_CELLS_IN_DIAGON = 5;
     private int winner, availableChoices;
     private Pane[][] panes;
     private int[][] choiceMatrix;
@@ -46,7 +45,7 @@ public class Connect4Controller
      * Default opening turn goes to player 1.
      * There are a total of 35 available choices.
      * Choice matrix keeps track of the cells each player has selected; 
-     * each cell is given the arbitually, default value of 10.
+     * each cell is given the arbitually, default value of 0.
      * Panes represents the game field.
      */
     public void initialize()
@@ -56,12 +55,12 @@ public class Connect4Controller
         int i = 0;
         winner = 0;
         availableChoices = 35;
-        panes = new Pane[rows][columns];
-        choiceMatrix = new int[rows][columns];
+        panes = new Pane[ROWS][COLUMNS];
+        choiceMatrix = new int[ROWS][COLUMNS];
         
-        for (int row = 0; row < rows; row++)
+        for (int row = 0; row < ROWS; row++)
         {
-            for (int col = 0; col < columns; col++)
+            for (int col = 0; col < COLUMNS; col++)
             {
                 panes[row][col] = ((Pane)paneGroup.getChildren().get(i));
                 choiceMatrix[row][col] = DEFAULT_VALUE;
@@ -86,7 +85,7 @@ public class Connect4Controller
          * Examines if there is an empty pane within the selected column,             
          * if yes, then saves it to temp with its row and sets a flag accordingly.
          */
-        for (int row = 0; row < rows; row++) 
+        for (int row = 0; row < ROWS; row++) 
         {
             if (panes[row][selectedColumn].getChildren().size() == 0)
             {
@@ -105,7 +104,7 @@ public class Connect4Controller
         */ 
         if (hasEmptyCell) 
         {
-            Circle circle = new Circle(tempPane.getPrefWidth()/2, tempPane.getPrefHeight()/2,radius);
+            Circle circle = new Circle(tempPane.getPrefWidth()/2, tempPane.getPrefHeight()/2,RADIUS);
             if (player1_Turn)
             {
                 circle.setFill(Color.RED);
@@ -128,17 +127,18 @@ public class Connect4Controller
             messageBox.setText("Invalid Choice");
         }
 
+        // Examines every move in the game with the choice matrix.
         examine_Game(selectedRow,selectedColumn);
     }
     
     /*
-     * Examines the current game's state.
+     * Examines the current game's state with the choice matrix.
      */
     private void examine_Game(int i, int j)
     {
         /*
          * Examines if either player has won or if game ended with a draw and sets the message and winner accordingly
-         * and switches off the buttons 1 to 7.
+         * and switches off buttons 1 to 7.
          */
         int result = examine_Directions(i,j);
         if (result != NO_RESULT)
@@ -166,138 +166,142 @@ public class Connect4Controller
     }
     
     /*
-     * Sums the selected pane with its 3 neighboring panes in either of 8 directions and compares the sums to the winning sums.
+     * Examines whether for a given cell within the choice matrix, if there are 4 consecutive none-zero numbers, including the cell itself, in either of 8 directions.
      */
     private int examine_Directions(int i, int j)
     {
-        /*
-         * If possible, sums the selected cell with the 3 consecutive cells in either direction.
-         * If a direction can not be summed then this direction's sum will be 0 by default.
-         * We sum the directions in a clock-wise fashion.
-         * Then, we compare each sum to the winning sums: player 1 winning sum is 4 (1+1+1+1) and player 2 winning sum is 8 (2+2+2+2).
-         */
-        
-        int[] directions = new int[DIRECTIONS];
+        int[] row = new int[MAX_CELLS_IN_ROW];
+        int [] column = new int[MAX_CELLS_IN_COLUMN]; 
+        int [] leftDiagon = new int[MAX_CELLS_IN_DIAGON];  
+        int [] rightDiagon = new int[MAX_CELLS_IN_DIAGON];
         int result = NO_RESULT;
         
-        directions[0] = sumColumn(i,j,UP);
-        directions[1] = sumDiagon(i,j,RIGHT,UP);
-        directions[2] = sumRow(i,j,RIGHT);
-        directions[3] = sumDiagon(i,j,RIGHT,DOWN);
-        directions[4] = sumColumn(i,j,DOWN);
-        directions[5] = sumDiagon(i,j,LEFT,DOWN);
-        directions[6] = sumRow(i,j,LEFT);
-        directions[7] = sumDiagon(i,j,LEFT,UP);
+        // Initialises the arrays to 0's.
+        init_Array(row);
+        init_Array(column);
+        init_Array(leftDiagon);
+        init_Array(rightDiagon);
         
-        for (int d = 0; d < DIRECTIONS; d++)
+        // Gets the row of the selected cell, its column and the diagons relative to it from the choice matrix.
+        get_Row(i,row);
+        get_Column(j,column);
+        get_Diagon(i,j,leftDiagon,true);
+        get_Diagon(i,j,rightDiagon,false);
+        
+        // Examines each direction for the result. Whether player 1 won (result = 1), player 2 (result = 2) or no one (result = 0).
+        result = examine_Cells(row);
+        result = Math.max(result, examine_Cells(column));
+        result =  Math.max(result, examine_Cells(leftDiagon));
+        result =  Math.max(result, examine_Cells(rightDiagon));
+        
+        return result;
+    }
+    
+    /*
+     * Resets an array.
+     */ 
+    private void init_Array(int[] array)
+    {
+        for (int i = 0; i < array.length; i++)
         {
-            if (directions[d] == PLAYER1_WINNING_SUM)
+            array[i] = 0;
+        }
+    }
+        
+    /*
+     * Gets the row of a given cell within the choice matrix.
+     */
+    private void get_Row(int i, int[] row)
+    {
+        for (int c = 0; c < row.length; c++)
+        {
+            row[c] = choiceMatrix[i][c];
+        }
+    }
+    
+    /*
+     * Gets the column of a given cell within the choice matrix.
+     */
+    private void get_Column(int j, int[] column)
+    {
+        for (int r = 0; r < column.length; r++)
+        {
+            column[r] = choiceMatrix[r][j];
+        }
+    }
+    
+    
+    /*
+     * Gets the left and right diagons of a given cell within the choice matrix.
+     */
+    private void get_Diagon(int i, int j, int[] diagon, boolean getLeftDiagon)
+    {
+        int diagonStartingRow = i, diagonStartingColumn = j, r = 0, c = 0, d = 0;
+
+        if (getLeftDiagon)
+        {
+            /*
+             * The left diagon starting cell is the upper most left cell relative to the cell itself or the given cell itself.
+             * Then, we get the diagon's cells left to right, top to bottom. The maximum cells contained in a left diagon is 5.
+             */
+            while (diagonStartingRow - 1 >= 0 && diagonStartingColumn - 1 >= 0)
+            {
+                diagonStartingRow--;
+                diagonStartingColumn--;
+            }
+            
+            r = diagonStartingRow; 
+            c = diagonStartingColumn;
+            while (r < ROWS && c < COLUMNS && d < diagon.length)
+            {
+                diagon[d] = choiceMatrix[r][c];
+                r++;
+                c++;
+                d++;
+            }            
+        }
+        else
+        {
+            /*
+             * The right diagon starting cell is the upper most right cell relative to the cell itself or the given cell itself.
+             * Then, we get the diagon's cell right to left, top to bottom. The maximum cells contained in a right diagon is 5.
+             */  
+            while (diagonStartingRow - 1 >= 0 && diagonStartingColumn + 1 < COLUMNS)
+            {
+                diagonStartingRow--;
+                diagonStartingColumn++;
+            }
+            
+            r = diagonStartingRow; 
+            c = diagonStartingColumn;
+            while (r < ROWS && 0 <= c && d < diagon.length)
+            {
+                diagon[d] = choiceMatrix[r][c];
+                r++;
+                c--;
+                d++;
+            }            
+        }
+    }
+    
+    /*
+     * Examines if there are 4 consecutive 1's or 2's, representing player 1 and 2 choices, respectively. 
+     */
+    private int examine_Cells(int[] cells)
+    {
+        int result = NO_RESULT;  
+        for (int c = 0; c + CONSECUTIVE_CELLS_3 < cells.length; c++)
+        {
+            if (cells[c] == 1 && cells[c+1] == 1 && cells[c+2] == 1 && cells[c+3] == 1)
             {
                 result = PLAYER1_WINS;
             }
-            if (directions[d] == PLAYER2_WINNING_SUM)
+            if (cells[c] == 2 && cells[c+1] == 2 && cells[c+2] == 2 && cells[c+3] == 2)
             {
                 result = PLAYER2_WINS;
             }
         }
         return result;
-    }
-    
-    /*
-     * If possible, sums the 4 consecutive cells in either direction, left or right, else returns the default sum of 0.
-     */
-    private int sumRow(int i, int j, int direction)
-    {
-        int sum = 0;
-        if (direction == RIGHT)
-        {
-            if (j + CONSECUTIVE_CELLS_3 < columns)
-            {
-                for (int c = 0; c < CONSECUTIVE_CELLS_3 + 1; c++)
-                {
-                    sum += choiceMatrix[i][j+c];
-                }            
-            }            
-        }
-        else
-        {
-            if (0 < j - CONSECUTIVE_CELLS_3)
-            {
-                for (int c = 0; c < CONSECUTIVE_CELLS_3 + 1; c++)
-                {
-                    sum += choiceMatrix[i][j-c];
-                }            
-            }                  
-        }
-        return sum;
-    }
-    
-    /*
-     * If possible, sums the 4 consecutive cells in either direction, up or down, else returns the default sum of 0.
-     */
-    private int sumColumn(int i, int j, int direction)
-    {
-        int sum = 0;
-        if (direction == UP && 0 <= i - CONSECUTIVE_CELLS_3)
-        {
-            for (int r = 0; r < CONSECUTIVE_CELLS_3 + 1; r++)
-            {
-                sum += choiceMatrix[i-r][j];
-            }            
-        }
-        else
-        {
-            if (i + CONSECUTIVE_CELLS_3 < rows)
-            {
-                for (int r = 0; r < CONSECUTIVE_CELLS_3 + 1; r++)
-                {
-                    sum += choiceMatrix[i+r][j];
-                }            
-            }                  
-        }
-        return sum;
-    }
-    
-    
-    /*
-     * If possible, sums the 4 consecutive cells in either of 4 directions; right and up,right and down, left and up or left and down.
-     * Else returns the default sum of 0.
-     */
-    private int sumDiagon(int i, int j, int directionX, int directionY)
-    {
-        int sum = 0;
-        if (directionX == RIGHT && directionY == UP && 0 <= i - CONSECUTIVE_CELLS_3 && j + CONSECUTIVE_CELLS_3 < columns)
-        {
-            for (int r = 0, c = 0; r < CONSECUTIVE_CELLS_3 + 1; r++, c++)
-            {
-                sum += choiceMatrix[i-r][j+c];
-            }                 
-        }
-        else if (directionX == RIGHT && directionY == DOWN && i + CONSECUTIVE_CELLS_3 < rows && j + CONSECUTIVE_CELLS_3 < columns)
-        {
-            for (int r = 0, c = 0; r < CONSECUTIVE_CELLS_3 + 1; r++, c++)
-            {
-                sum += choiceMatrix[i+r][j+c];
-            }                  
-        }
-        else if (directionX == LEFT && directionY == UP && 0 <= i - CONSECUTIVE_CELLS_3 && 0 <= j - CONSECUTIVE_CELLS_3)
-        {
-            for (int r = 0, c = 0; r < CONSECUTIVE_CELLS_3 + 1; r++, c++)
-            {
-                sum += choiceMatrix[i-r][j-c];
-            }              
-        }
-        else
-        {
-             if (i + CONSECUTIVE_CELLS_3 < rows && 0 <= j - CONSECUTIVE_CELLS_3)
-            {
-                for (int r = 0, c = 0; r < CONSECUTIVE_CELLS_3 + 1; r++, c++)
-                {
-                    sum += choiceMatrix[i+r][j-c];
-                }              
-            }            
-        }
-        return sum;
     }
 
     /*
@@ -312,16 +316,16 @@ public class Connect4Controller
          * or player 1 if game ended with a draw, and switches on the buttons 1 to 7.
          * If Clear has been pressed, then the next game's opening turn will be given by default to player 1.
          */
-        for (int row = 0; row < rows; row++)
+        for (int row = 0; row < ROWS; row++)
         {
-            for (int col = 0; col < columns; col++)
+            for (int col = 0; col < COLUMNS; col++)
             {
                 panes[row][col].getChildren().clear();
             }
         }
-        for (int row = 0; row < rows; row++)
+        for (int row = 0; row < ROWS; row++)
         {
-            for (int col = 0; col < columns; col++)
+            for (int col = 0; col < COLUMNS; col++)
             {
                 choiceMatrix[row][col] = DEFAULT_VALUE;
             }
